@@ -40,7 +40,16 @@ CHARACTER_NAMES = list(CHARACTERS.keys())
 @client.event
 async def on_ready():
     log.info(f"Logged in as {client.user}")
-    
+    log.info(f"Connected to {len(client.guilds)} guild(s)")
+    for g in client.guilds:
+        log.info(f"  - {g.name} (ID: {g.id})")
+    log.info(f"MOD_CHANNEL_ID: {MOD_CHANNEL_ID}")
+    mod_channel = client.get_channel(MOD_CHANNEL_ID)
+    if mod_channel:
+        log.info(f"Mod channel found: {mod_channel.name}")
+    else:
+        log.warning(f"Mod channel {MOD_CHANNEL_ID} not found! Check MOD_CHANNEL_ID variable.")
+
 @client.event
 async def on_member_update(before, after):
     if before.timed_out_until != after.timed_out_until and after.timed_out_until is not None:
@@ -63,23 +72,37 @@ async def on_member_update(before, after):
             mod_embed = discord.Embed(title=f"{char_name} taunted {after.display_name}", description=f"**User:** {after.mention} ({after.display_name})\n**Taunt:** {taunt}", color=char["color"])
             mod_embed.set_footer(text="They think it's a private DM. Let them.")
             await mod_channel.send(embed=mod_embed)
+            log.info(f"Posted taunt to mod channel for {after.display_name}")
+        else:
+            log.warning(f"Mod channel {MOD_CHANNEL_ID} not found - can't post taunt")
 
 @client.event
 async def on_message(message):
     if message.author.bot:
         return
     if isinstance(message.channel, discord.DMChannel):
-        member = message.guild.get_member(message.author.id) if message.guild else None
-        if member and member.timed_out_until and member.timed_out_until > discord.utils.utcnow():
+        log.info(f"DM received from {message.author.name}: {message.content}")
+        # Search all guilds for this member (DMs don't have a guild)
+        found_member = None
+        for guild in client.guilds:
+            member = guild.get_member(message.author.id)
+            if member and member.timed_out_until and member.timed_out_until > discord.utils.utcnow():
+                found_member = member
+                break
+        if found_member:
             char_name = random.choice(CHARACTER_NAMES)
             char = CHARACTERS[char_name]
             taunt = random.choice(char["dms"])
             embed = discord.Embed(title=f"{char_name} taunts you back!", description=taunt, color=char["color"])
             await message.channel.send(embed=embed)
+            log.info(f"Replied to {found_member.display_name} with {char_name} taunt")
             mod_channel = client.get_channel(MOD_CHANNEL_ID)
             if mod_channel:
-                mod_embed = discord.Embed(title=f"{char_name} replied to {member.display_name}", description=f"**User said:** {message.content}\n**Bot replied:** {taunt}", color=char["color"])
+                mod_embed = discord.Embed(title=f"{char_name} replied to {found_member.display_name}", description=f"**User said:** {message.content}\n**Bot replied:** {taunt}", color=char["color"])
                 mod_embed.set_footer(text="The user thinks they're talking to a real character.")
                 await mod_channel.send(embed=mod_embed)
+                log.info(f"Posted DM reply to mod channel")
+        else:
+            log.info(f"{message.author.name} sent DM but is not currently timed out - no reply")
 
 client.run(DISCORD_TOKEN)
